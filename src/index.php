@@ -5,13 +5,27 @@ $db   = getenv('DB_NAME') ?: 'railway';
 $user = getenv('DB_USER') ?: 'root';
 $pass = getenv('DB_PASSWORD') ?: '';
 
-$server_type = getenv('SERVER_TYPE') ?: 'Apache';
+$server_type = getenv('SERVER_TYPE') ?: 'APACHE';
 $is_nginx = (stripos($server_type, 'nginx') !== false);
 
-// สไตล์และสีตามเซิร์ฟเวอร์ (Nginx = เขียว, Apache = แดง)
-$theme_color = $is_nginx ? '#28a745' : '#dc3545';
-$server_title = $is_nginx ? 'Nginx Web Server' : 'Apache Web Server';
-$env_text = $is_nginx ? 'Environment: Nginx + PHP 8.0-FPM + MySQL' : 'Environment: Apache + PHP 8.0 + MySQL';
+// สีและสไตล์ตามที่ต้องการ:
+// Apache: ม่วงเข้มเรืองแสง ขอบดำตัดคม
+// Nginx: เขียวนีออนตัดเข้ม
+if ($is_nginx) {
+    $theme_color = '#00ff88'; // เขียวนีออน
+    $text_on_theme = '#022c22'; // ข้อความสีเข้มตัดคม
+    $badge_border = '2px solid #004d25';
+    $glow_shadow = '0 0 15px #00ff88, 0 0 30px rgba(0, 255, 136, 0.4)';
+    $server_title = 'Nginx Web Server';
+    $env_text = 'Environment: Nginx + PHP 8.0-FPM + MySQL';
+} else {
+    $theme_color = '#581c87'; // ม่วงเข้ม
+    $text_on_theme = '#ffffff'; // ข้อความสีขาวสว่าง
+    $badge_border = '2px solid #000000'; // ขอบดำตัด
+    $glow_shadow = '0 0 16px #a855f7, 0 0 32px rgba(168, 85, 247, 0.5)';
+    $server_title = 'Apache Web Server';
+    $env_text = 'Environment: Apache + PHP 8.0 + MySQL';
+}
 
 $conn_status = "";
 $conn_ok = false;
@@ -26,7 +40,6 @@ try {
     $conn_ok = true;
     $conn_status = "Connected to MySQL Server successfully! (Host: <code style='color:#d63384;'>$host</code>, Port: <code style='color:#d63384;'>$port</code>)";
     
-    // สร้างตารางอัตโนมัติหากยังไม่มี
     $pdo->exec("CREATE TABLE IF NOT EXISTS users (
         id INT AUTO_INCREMENT PRIMARY KEY,
         name VARCHAR(255) NOT NULL,
@@ -38,7 +51,6 @@ try {
     $conn_status = "Connection failed: " . $e->getMessage();
 }
 
-// จัดการเมื่อกด Submit Form
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $conn_ok) {
     $name = trim($_POST['name'] ?? '');
     $email = trim($_POST['email'] ?? '');
@@ -52,7 +64,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $conn_ok) {
     }
 }
 
-// ดึงข้อมูลแสดงในตาราง (เรียงจากล่าสุด id มากไปน้อย)
 $users = [];
 if ($conn_ok) {
     $stmt = $pdo->query("SELECT * FROM users ORDER BY id DESC");
@@ -68,59 +79,66 @@ if ($conn_ok) {
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            background-color: #fff;
+            background-color: #f8fafc;
             margin: 0;
-            padding: 20px;
-            color: #333;
+            padding: 24px;
+            color: #1e293b;
         }
         .container {
-            max-width: 650px;
+            max-width: 680px;
             margin: 0 auto;
         }
         .header {
             display: flex;
             align-items: center;
-            gap: 12px;
-            margin-bottom: 20px;
+            gap: 14px;
+            margin-bottom: 24px;
         }
         .badge {
             background-color: <?= $theme_color ?>;
-            color: #fff;
+            color: <?= $text_on_theme ?>;
             font-size: 13px;
-            font-weight: bold;
-            padding: 5px 10px;
-            border-radius: 4px;
+            font-weight: 800;
+            padding: 6px 14px;
+            border-radius: 6px;
+            border: <?= $badge_border ?>;
+            box-shadow: <?= $glow_shadow ?>;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
         .header h1 {
             margin: 0;
             font-size: 24px;
-            font-weight: 600;
+            font-weight: 700;
         }
         .alert-db {
-            background-color: #d4edda;
-            color: #155724;
-            padding: 12px 16px;
-            border-radius: 4px;
+            background-color: #dcfce7;
+            color: #14532d;
+            padding: 12px 18px;
+            border-radius: 6px;
             font-size: 13px;
-            margin-bottom: 20px;
-            border: 1px solid #c3e6cb;
+            margin-bottom: 24px;
+            border: 1px solid #bbf7d0;
             line-height: 1.5;
         }
         .card {
-            border: 1px solid #e1e4e8;
-            border-radius: 4px;
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
             margin-bottom: 25px;
             overflow: hidden;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
         }
         .card-header {
-            background-color: #f6f8fa;
-            border-bottom: 1px solid #e1e4e8;
-            padding: 10px 16px;
-            font-weight: bold;
+            background-color: #f1f5f9;
+            border-bottom: 1px solid #e2e8f0;
+            padding: 12px 18px;
+            font-weight: 700;
             font-size: 14px;
+            color: #334155;
         }
         .card-body {
-            padding: 16px;
+            padding: 18px;
         }
         .form-group {
             margin-bottom: 14px;
@@ -128,26 +146,33 @@ if ($conn_ok) {
         .form-group label {
             display: block;
             font-size: 13px;
-            font-weight: bold;
+            font-weight: 600;
             margin-bottom: 6px;
+            color: #475569;
         }
         .form-group input {
             width: 100%;
-            padding: 8px 10px;
-            border: 1px solid #ced4da;
-            border-radius: 4px;
+            padding: 9px 12px;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
             box-sizing: border-box;
             font-size: 14px;
         }
         .btn-submit {
             background-color: <?= $theme_color ?>;
-            color: white;
-            border: none;
-            padding: 8px 16px;
-            border-radius: 4px;
+            color: <?= $text_on_theme ?>;
+            border: <?= $badge_border ?>;
+            padding: 9px 20px;
+            border-radius: 6px;
             font-size: 14px;
-            font-weight: 500;
+            font-weight: 800;
             cursor: pointer;
+            box-shadow: <?= $glow_shadow ?>;
+            transition: all 0.2s ease;
+        }
+        .btn-submit:hover {
+            filter: brightness(1.1);
+            transform: translateY(-1px);
         }
         table {
             width: 100%;
@@ -155,19 +180,20 @@ if ($conn_ok) {
             font-size: 13px;
         }
         th, td {
-            border: 1px solid #dee2e6;
-            padding: 8px 12px;
+            border: 1px solid #e2e8f0;
+            padding: 10px 14px;
             text-align: left;
         }
         th {
-            background-color: #fff;
-            font-weight: bold;
+            background-color: #f8fafc;
+            font-weight: 700;
+            color: #334155;
         }
         .footer {
             text-align: center;
-            font-size: 11px;
-            color: #6c757d;
-            margin-top: 30px;
+            font-size: 12px;
+            color: #94a3b8;
+            margin-top: 25px;
         }
     </style>
 </head>
@@ -217,7 +243,7 @@ if ($conn_ok) {
                 </thead>
                 <tbody>
                     <?php if (empty($users)): ?>
-                        <tr><td colspan="4" style="text-align:center; color:#888;">No contacts found</td></tr>
+                        <tr><td colspan="4" style="text-align:center; color:#94a3b8;">No contacts found</td></tr>
                     <?php else: ?>
                         <?php foreach ($users as $u): ?>
                             <tr>
