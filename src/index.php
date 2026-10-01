@@ -1,101 +1,126 @@
 <?php
-// อ่านค่าพอร์ตหรือระบุเซิร์ฟเวอร์
-$post_server = $_POST['server_type'] ?? '';
-$http_host = $_SERVER['HTTP_HOST'] ?? '';
-$referer = $_SERVER['HTTP_REFERER'] ?? '';
+$host = getenv('DB_HOST') ?: 'mysql.railway.internal';
+$port = getenv('DB_PORT') ?: '3306';
+$db   = getenv('DB_NAME') ?: 'railway';
+$user = getenv('DB_USER') ?: 'root';
+$pass = getenv('DB_PASSWORD') ?: '';
 
-// ตรวจสอบชนิดเว็บเซิร์ฟเวอร์จาก SERVER_SOFTWARE หรือ Environment Variable
-$server_software = $_SERVER['SERVER_SOFTWARE'] ?? '';
-$is_nginx = (getenv('SERVER_TYPE') === 'NGINX') || (stripos($server_software, 'nginx') !== false);
+$server_type = getenv('SERVER_TYPE') ?: 'Apache';
+$is_nginx = (stripos($server_type, 'nginx') !== false);
 
-// อ่านค่าการเชื่อมต่อฐานข้อมูลจาก Railway Environment Variables
-$host = getenv('DB_HOST') ?: getenv('MYSQLHOST') ?: 'mysql.railway.internal';
-$port = (int)(getenv('DB_PORT') ?: getenv('MYSQLPORT') ?: 3306);
-$user = getenv('DB_USER') ?: getenv('MYSQLUSER') ?: 'root';
-$pass = getenv('DB_PASSWORD') ?: getenv('MYSQLPASSWORD') ?: '';
-$dbname = getenv('DB_NAME') ?: getenv('MYSQLDATABASE') ?: 'railway';
+// สไตล์และสีตามเซิร์ฟเวอร์ (Nginx = เขียว, Apache = แดง)
+$theme_color = $is_nginx ? '#28a745' : '#dc3545';
+$server_title = $is_nginx ? 'Nginx Web Server' : 'Apache Web Server';
+$env_text = $is_nginx ? 'Environment: Nginx + PHP 8.0-FPM + MySQL' : 'Environment: Apache + PHP 8.0 + MySQL';
 
-$status_msg = '';
-$conn = new mysqli($host, $user, $pass, $dbname, $port);
+$conn_status = "";
+$conn_ok = false;
+$pdo = null;
 
-if (!$conn->connect_error) {
-    $conn->query("CREATE TABLE IF NOT EXISTS users (
+try {
+    $dsn = "mysql:host=$host;port=$port;dbname=$db;charset=utf8mb4";
+    $pdo = new PDO($dsn, $user, $pass, [
+        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
+    ]);
+    $conn_ok = true;
+    $conn_status = "Connected to MySQL Server successfully! (Host: <code style='color:#d63384;'>$host</code>, Port: <code style='color:#d63384;'>$port</code>)";
+    
+    // สร้างตารางอัตโนมัติหากยังไม่มี
+    $pdo->exec("CREATE TABLE IF NOT EXISTS users (
         id INT AUTO_INCREMENT PRIMARY KEY,
         name VARCHAR(255) NOT NULL,
         email VARCHAR(255) NOT NULL,
-        mobile VARCHAR(50) NOT NULL
+        mobile VARCHAR(50) NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )");
+} catch (Exception $e) {
+    $conn_status = "Connection failed: " . $e->getMessage();
+}
 
-    if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-        $name = trim($_POST['name'] ?? '');
-        $email = trim($_POST['email'] ?? '');
-        $mobile = trim($_POST['mobile'] ?? '');
+// จัดการเมื่อกด Submit Form
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && $conn_ok) {
+    $name = trim($_POST['name'] ?? '');
+    $email = trim($_POST['email'] ?? '');
+    $mobile = trim($_POST['mobile'] ?? '');
 
-        if ($name && $email && $mobile) {
-            $stmt = $conn->prepare("INSERT INTO users (name, email, mobile) VALUES (?, ?, ?)");
-            if ($stmt) {
-                $stmt->bind_param("sss", $name, $email, $mobile);
-                $stmt->execute();
-            }
-        }
+    if ($name && $email && $mobile) {
+        $stmt = $pdo->prepare("INSERT INTO users (name, email, mobile) VALUES (?, ?, ?)");
+        $stmt->execute([$name, $email, $mobile]);
+        header("Location: " . $_SERVER['PHP_SELF']);
+        exit;
     }
+}
+
+// ดึงข้อมูลแสดงในตาราง (เรียงจากล่าสุด id มากไปน้อย)
+$users = [];
+if ($conn_ok) {
+    $stmt = $pdo->query("SELECT * FROM users ORDER BY id DESC");
+    $users = $stmt->fetchAll();
 }
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Contact Form</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><?= htmlspecialchars($server_title) ?></title>
     <style>
         body {
-            font-family: Arial, Helvetica, sans-serif;
-            background-color: #fdfdfd;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #fff;
             margin: 0;
-            padding: 40px 20px;
-            position: relative;
-            min-height: 100vh;
-            box-sizing: border-box;
-            overflow-x: hidden;
+            padding: 20px;
+            color: #333;
         }
-        .watermark {
-            position: fixed;
-            top: 48%;
-            left: 50%;
-            transform: translate(-50%, -50%) rotate(-12deg);
-            font-size: 130px;
-            font-weight: 900;
-            color: rgba(220, 225, 235, 0.45);
-            z-index: 1;
-            pointer-events: none;
-            user-select: none;
-            letter-spacing: 6px;
-        }
-        .form-wrapper {
-            position: relative;
-            z-index: 2;
-            max-width: 440px;
+        .container {
+            max-width: 650px;
             margin: 0 auto;
         }
-        .header-row {
+        .header {
             display: flex;
-            justify-content: space-between;
-            align-items: baseline;
-            margin-bottom: 4px;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 20px;
         }
-        .header-row h1 {
-            margin: 0;
-            font-size: 26px;
+        .badge {
+            background-color: <?= $theme_color ?>;
+            color: #fff;
+            font-size: 13px;
             font-weight: bold;
-            color: #111;
+            padding: 5px 10px;
+            border-radius: 4px;
         }
-        .server-tag {
-            font-size: 13px;
-            color: #555;
+        .header h1 {
+            margin: 0;
+            font-size: 24px;
+            font-weight: 600;
         }
-        .sub-text {
-            color: #666;
+        .alert-db {
+            background-color: #d4edda;
+            color: #155724;
+            padding: 12px 16px;
+            border-radius: 4px;
             font-size: 13px;
-            margin: 0 0 24px 0;
+            margin-bottom: 20px;
+            border: 1px solid #c3e6cb;
+            line-height: 1.5;
+        }
+        .card {
+            border: 1px solid #e1e4e8;
+            border-radius: 4px;
+            margin-bottom: 25px;
+            overflow: hidden;
+        }
+        .card-header {
+            background-color: #f6f8fa;
+            border-bottom: 1px solid #e1e4e8;
+            padding: 10px 16px;
+            font-weight: bold;
+            font-size: 14px;
+        }
+        .card-body {
+            padding: 16px;
         }
         .form-group {
             margin-bottom: 14px;
@@ -104,95 +129,113 @@ if (!$conn->connect_error) {
             display: block;
             font-size: 13px;
             font-weight: bold;
-            color: #222;
             margin-bottom: 6px;
         }
         .form-group input {
             width: 100%;
-            padding: 9px 12px;
-            border: 1px solid #c9d5ea;
+            padding: 8px 10px;
+            border: 1px solid #ced4da;
             border-radius: 4px;
             box-sizing: border-box;
-            background-color: #eef3fc;
             font-size: 14px;
-            outline: none;
-        }
-        .form-group input:focus {
-            border-color: #0d6efd;
-            background-color: #fff;
         }
         .btn-submit {
-            background-color: #0d6efd;
+            background-color: <?= $theme_color ?>;
             color: white;
             border: none;
-            padding: 8px 24px;
-            font-size: 14px;
+            padding: 8px 16px;
             border-radius: 4px;
+            font-size: 14px;
+            font-weight: 500;
             cursor: pointer;
-            margin-top: 6px;
         }
-        .btn-submit:hover {
-            background-color: #0b5ed7;
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
         }
-        .footer-status {
-            margin-top: 24px;
-            font-size: 12px;
-            color: #333;
-            line-height: 1.6;
+        th, td {
+            border: 1px solid #dee2e6;
+            padding: 8px 12px;
+            text-align: left;
+        }
+        th {
+            background-color: #fff;
+            font-weight: bold;
+        }
+        .footer {
+            text-align: center;
+            font-size: 11px;
+            color: #6c757d;
+            margin-top: 30px;
         }
     </style>
 </head>
 <body>
-
-<div class="watermark" id="ui-watermark">APACHE</div>
-
-<div class="form-wrapper">
-    <div class="header-row">
-        <h1>Contact Form</h1>
-        <span class="server-tag">Server: <span id="ui-servertag">APACHE</span></span>
+<div class="container">
+    <div class="header">
+        <span class="badge"><?= $is_nginx ? 'Nginx Web Server' : 'Apache Web Server' ?></span>
+        <h1>Contact Management</h1>
     </div>
-    <p class="sub-text">Please fill this form and submit to add employee record to the database</p>
 
-    <form method="POST" id="contactForm">
-        <input type="hidden" name="server_type" id="input_server_type" value="APACHE">
+    <div class="alert-db">
+        <strong>Database Status:</strong> <?= $conn_status ?>
+    </div>
 
-        <div class="form-group">
-            <label>Name</label>
-            <input type="text" name="name" required>
+    <div class="card">
+        <div class="card-header">Add New Contact</div>
+        <div class="card-body">
+            <form method="POST">
+                <div class="form-group">
+                    <label>Name</label>
+                    <input type="text" name="name" required>
+                </div>
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" name="email" required>
+                </div>
+                <div class="form-group">
+                    <label>Mobile</label>
+                    <input type="text" name="mobile" required>
+                </div>
+                <button type="submit" class="btn-submit">Submit Contact</button>
+            </form>
         </div>
+    </div>
 
-        <div class="form-group">
-            <label>Email</label>
-            <input type="email" name="email" required>
+    <div class="card">
+        <div class="card-header">Users List (from MySQL Database)</div>
+        <div>
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width: 10%;">ID</th>
+                        <th style="width: 30%;">Name</th>
+                        <th style="width: 35%;">Email</th>
+                        <th style="width: 25%;">Mobile</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php if (empty($users)): ?>
+                        <tr><td colspan="4" style="text-align:center; color:#888;">No contacts found</td></tr>
+                    <?php else: ?>
+                        <?php foreach ($users as $u): ?>
+                            <tr>
+                                <td><?= htmlspecialchars($u['id']) ?></td>
+                                <td><?= htmlspecialchars($u['name']) ?></td>
+                                <td><?= htmlspecialchars($u['email']) ?></td>
+                                <td><?= htmlspecialchars($u['mobile']) ?></td>
+                            </tr>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </tbody>
+            </table>
         </div>
+    </div>
 
-        <div class="form-group">
-            <label>Mobile</label>
-            <input type="text" name="mobile" required>
-        </div>
-
-        <button type="submit" class="btn-submit">Submit</button>
-    </form>
-
-    <div class="footer-status">
-        Connected to MySQL server successfully via <span id="ui-conn">APACHE</span>!<br>
-        <?php echo date('d/m/Y'); ?>
+    <div class="footer">
+        <?= htmlspecialchars($env_text) ?>
     </div>
 </div>
-
-<script>
-    const port = window.location.port;
-    const isNginx = (port === '82');
-    const label = isNginx ? 'NGINX' : 'APACHE';
-
-    document.getElementById('ui-watermark').innerText = label;
-    document.getElementById('ui-servertag').innerText = label;
-    document.getElementById('ui-conn').innerText = label;
-    document.getElementById('input_server_type').value = label;
-
-    // บังคับให้ form ส่งคำขอกลับมาที่พอร์ตปัจจุบันของตัวเองโดยตรง
-    document.getElementById('contactForm').action = window.location.href;
-</script>
-
 </body>
 </html>
